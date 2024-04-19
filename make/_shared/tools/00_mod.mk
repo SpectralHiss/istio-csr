@@ -23,6 +23,8 @@ $(bin_dir)/scratch/image $(bin_dir)/tools $(bin_dir)/downloaded $(bin_dir)/downl
 
 checkhash_script := $(dir $(lastword $(MAKEFILE_LIST)))/util/checkhash.sh
 
+for_each_kv = $(foreach item,$2,$(eval $(call $1,$(word 1,$(subst =, ,$(item))),$(word 2,$(subst =, ,$(item))))))
+
 # To make sure we use the right version of each tool, we put symlink in
 # $(bin_dir)/tools, and the actual binaries are in $(bin_dir)/downloaded. When bumping
 # the version of the tools, this symlink gets updated.
@@ -49,7 +51,7 @@ TOOLS += azwi=v1.2.0
 # https://github.com/kyverno/kyverno/releases
 TOOLS += kyverno=v1.11.3
 # https://github.com/mikefarah/yq/releases
-TOOLS += yq=v4.40.5
+TOOLS += yq=v4.43.1
 # https://github.com/ko-build/ko/releases
 TOOLS += ko=0.15.1
 # https://github.com/protocolbuffers/protobuf/releases
@@ -101,13 +103,19 @@ TOOLS += goreleaser=v1.23.0
 # https://pkg.go.dev/github.com/anchore/syft/cmd/syft?tab=versions
 TOOLS += syft=v0.100.0
 # https://github.com/cert-manager/helm-tool
-TOOLS += helm-tool=v0.4.1
+TOOLS += helm-tool=v0.4.2
 # https://github.com/cert-manager/cmctl
 TOOLS += cmctl=2f75014a7c360c319f8c7c8afe8e9ce33fe26dca
 # https://pkg.go.dev/github.com/cert-manager/release/cmd/cmrel?tab=versions
 TOOLS += cmrel=fa10147dadc8c36718b7b08aed6d8c6418eb2
 # https://github.com/golangci/golangci-lint/releases
-TOOLS += golangci-lint=v1.55.2
+TOOLS += golangci-lint=v1.57.1
+# https://pkg.go.dev/golang.org/x/vuln?tab=versions
+TOOLS += govulncheck=v1.0.4
+# https://pkg.go.dev/github.com/operator-framework/operator-sdk/cmd/operator-sdk?tab=versions
+TOOLS += operator-sdk=v1.34.1
+# https://pkg.go.dev/github.com/cli/cli/v2?tab=versions
+TOOLS += gh=v2.47.0
 
 # https://pkg.go.dev/k8s.io/code-generator/cmd?tab=versions
 K8S_CODEGEN_VERSION=v0.29.1
@@ -130,7 +138,7 @@ ADDITIONAL_TOOLS ?=
 TOOLS += $(ADDITIONAL_TOOLS)
 
 # https://go.dev/dl/
-VENDORED_GO_VERSION := 1.21.7
+VENDORED_GO_VERSION := 1.21.9
 
 # Print the go version which can be used in GH actions
 .PHONY: print-go-version
@@ -306,18 +314,34 @@ GO_DEPENDENCIES += helm-tool=github.com/cert-manager/helm-tool
 GO_DEPENDENCIES += cmctl=github.com/cert-manager/cmctl/v2
 GO_DEPENDENCIES += cmrel=github.com/cert-manager/release/cmd/cmrel
 GO_DEPENDENCIES += golangci-lint=github.com/golangci/golangci-lint/cmd/golangci-lint
+GO_DEPENDENCIES += govulncheck=golang.org/x/vuln/cmd/govulncheck
+GO_DEPENDENCIES += operator-sdk=github.com/operator-framework/operator-sdk/cmd/operator-sdk
+GO_DEPENDENCIES += gh=github.com/cli/cli/v2/cmd/gh
+
+#################
+# go build tags #
+#################
+
+GO_TAGS :=
 
 # Additional Go dependencies can be defined to re-use the tooling in this file
 ADDITIONAL_GO_DEPENDENCIES ?=
+ADDITIONAL_GO_TAGS ?=
 GO_DEPENDENCIES += $(ADDITIONAL_GO_DEPENDENCIES)
+GO_TAGS += $(ADDITIONAL_GO_TAGS)
+
+go_tags_init = go_tags_$1 :=
+$(call for_each_kv,go_tags_init,$(GO_DEPENDENCIES))
+
+go_tags_defs = go_tags_$1 += $2
+$(call for_each_kv,go_tags_defs,$(GO_TAGS))
 
 define go_dependency
 $$(bin_dir)/downloaded/tools/$1@$($(call UC,$1)_VERSION)_%: | $$(NEEDS_GO) $$(bin_dir)/downloaded/tools
-	GOWORK=off GOBIN=$$(CURDIR)/$$(dir $$@) $$(GO) install $2@$($(call UC,$1)_VERSION)
+	GOWORK=off GOBIN=$$(CURDIR)/$$(dir $$@) $$(GO) install --tags "$(strip $(go_tags_$1))" $2@$($(call UC,$1)_VERSION)
 	@mv $$(CURDIR)/$$(dir $$@)/$1 $$@
 endef
-
-$(foreach GO_DEPENDENCY,$(GO_DEPENDENCIES),$(eval $(call go_dependency,$(word 1,$(subst =, ,$(GO_DEPENDENCY))),$(word 2,$(subst =, ,$(GO_DEPENDENCY))))))
+$(call for_each_kv,go_dependency,$(GO_DEPENDENCIES))
 
 ########
 # Helm #
@@ -440,10 +464,10 @@ $(bin_dir)/downloaded/tools/kyverno@$(KYVERNO_VERSION)_%: | $(bin_dir)/downloade
 # yq #
 ######
 
-YQ_linux_amd64_SHA256SUM=0d6aaf1cf44a8d18fbc7ed0ef14f735a8df8d2e314c4cc0f0242d35c0a440c95
-YQ_linux_arm64_SHA256SUM=9431f0fa39a0af03a152d7fe19a86e42e9ff28d503ed4a70598f9261ec944a97
-YQ_darwin_amd64_SHA256SUM=7f88b959c3fd2755e77dbf5bd92780dc3626c1c00ac45d5b5134f04189a142dc
-YQ_darwin_arm64_SHA256SUM=1ef0022ed6d0769d19e2d391dd731162034b0e0ba2c9b53dda039d16cec1c26a
+YQ_linux_amd64_SHA256SUM=cfbbb9ba72c9402ef4ab9d8f843439693dfb380927921740e51706d90869c7e1
+YQ_linux_arm64_SHA256SUM=a8186efb079673293289f8c31ee252b0d533c7bb8b1ada6a778ddd5ec0f325b6
+YQ_darwin_amd64_SHA256SUM=fdc42b132ac460037f4f0f48caea82138772c651d91cfbb735210075ddfdbaed
+YQ_darwin_arm64_SHA256SUM=9f1063d910698834cb9176593aa288471898031929138d226c2c2de9f262f8e5
 
 $(bin_dir)/downloaded/tools/yq@$(YQ_VERSION)_%: | $(bin_dir)/downloaded/tools
 	$(CURL) https://github.com/mikefarah/yq/releases/download/$(YQ_VERSION)/yq_$* -o $@
@@ -550,7 +574,7 @@ $(bin_dir)/downloaded/tools/rclone@$(RCLONE_VERSION)_%: | $(bin_dir)/downloaded/
 # That means we need to pass vendor-go at the top level if go is not installed (i.e. "make vendor-go abc")
 
 MISSING=$(shell (command -v curl >/dev/null || echo curl) \
-             && (command -v sha256sum >/dev/null || echo sha256sum) \
+             && (command -v sha256sum >/dev/null || command -v shasum >/dev/null || echo sha256sum) \
              && (command -v git >/dev/null || echo git) \
              && ([ -n "$(findstring vendor-go,$(MAKECMDGOALS),)" ] \
                 || command -v $(GO) >/dev/null || echo "$(GO) (or run 'make vendor-go')") \
